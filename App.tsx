@@ -2181,16 +2181,6 @@ const App = () => {
   const [logData, setLogData] = useState<LogTransaksi[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  });
-  const [rangeFilter, setRangeFilter] = useState<
-    "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua"
-  >("Hari");
   const isFetchingRef = useRef(false);
 
   const fetchData = useCallback(async (options?: { silent?: boolean }) => {
@@ -2283,10 +2273,6 @@ const App = () => {
                     <Dashboard
                       master={masterData}
                       logs={logData}
-                      selectedDate={selectedDate}
-                      rangeFilter={rangeFilter}
-                      onSelectedDateChange={setSelectedDate}
-                      onRangeFilterChange={setRangeFilter}
                       searchQuery={searchQuery}
                       onSearchChange={setSearchQuery}
                       onLogoutClick={() => setIsLogoutModalOpen(true)}
@@ -2322,8 +2308,6 @@ const App = () => {
                   element={
                     <RiwayatTransaksi
                       logs={logData}
-                      selectedDate={selectedDate}
-                      rangeFilter={rangeFilter}
                       searchQuery={searchQuery}
                       onSearchChange={setSearchQuery}
                       onLogoutClick={() => setIsLogoutModalOpen(true)}

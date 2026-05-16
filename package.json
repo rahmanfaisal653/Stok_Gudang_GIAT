@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:all": "concurrently \"npm run dev\" \"npm run backend\"",
+    "dev": "concurrently -n \"backend,frontend\" -c \"magenta,cyan\" \"npm run backend\" \"vite\"",
+    "frontend": "vite",
     "backend": "node backend/index.js",
     "build": "vite build",
     "preview": "vite preview"

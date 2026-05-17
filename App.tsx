@@ -76,6 +76,40 @@ import { sheetService } from "./services/sheetService";
 const LOGO_URL = "https://ekop.kopgiat.id//logo_giat.ico";
 const POLL_INTERVAL_MS = 5000;
 
+// ─── TOAST NOTIFICATION ───────────────────────────────────────
+type ToastType = 'success' | 'error' | 'warning';
+interface Toast { id: number; message: string; type: ToastType; }
+
+const ToastContainer = ({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: number) => void }) => (
+  <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+    {toasts.map(t => (
+      <div
+        key={t.id}
+        className={`flex items-center gap-3 px-4 sm:px-5 py-3.5 rounded-none sm:rounded-[14px] shadow-xl text-white text-[13px] font-semibold pointer-events-auto animate-in slide-in-from-bottom-4 duration-300 min-w-full sm:min-w-[260px] sm:max-w-[360px]
+          ${t.type === 'success' ? 'bg-[#1E293B]' : t.type === 'error' ? 'bg-[#E53935]' : 'bg-amber-500'}`}
+      >
+        <span className="text-lg">
+          {t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : '⚠'}
+        </span>
+        <span className="flex-1">{t.message}</span>
+        <button onClick={() => onRemove(t.id)} className="opacity-70 hover:opacity-100 ml-2">✕</button>
+      </div>
+    ))}
+  </div>
+);
+
+let _toastId = 0;
+const useToast = () => {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const show = useCallback((message: string, type: ToastType = 'success') => {
+    const id = ++_toastId;
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  }, []);
+  const remove = useCallback((id: number) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+  return { toasts, show, remove };
+};
+
 // --- HELPERS ---
 const numericSort = (a: MasterBarang, b: MasterBarang) => {
   const idA = a.IDBarang.toString();
@@ -129,7 +163,7 @@ const LoginPage = ({ onLogin }: { onLogin: (remember: boolean) => void }) => {
         {/* Left Side: Login Form */}
         <div className="w-full lg:w-[45%] flex flex-col justify-between px-8 py-8 lg:px-16 lg:py-10 bg-white relative z-10 overflow-y-auto">
           <div>
-            <div className="flex items-center gap-2 mb-12">
+            <div className="flex items-center gap-2 mb-6 lg:mb-12">
               <div className="relative">
                 <img
                   src="/assets/logo%20giat%20remove%20bg.png"
@@ -314,7 +348,7 @@ const Sidebar = ({
       <aside
         className={`fixed top-0 left-0 h-full w-64 bg-white border-r border-slate-100 z-30 transition-transform duration-300 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
-        <div className="h-24 flex items-center px-8 border-b border-slate-50">
+        <div className="h-24 flex items-center px-8 border-b border-slate-50 relative">
           <div className="flex items-center gap-3">
             <img
               src="/assets/logo%20giat%20remove%20bg.png"
@@ -327,6 +361,12 @@ const Sidebar = ({
               </h1>
             </div>
           </div>
+          <button
+            onClick={toggle}
+            className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
         <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
           {menuItems.map((item, index) => {
@@ -435,7 +475,7 @@ const TopHeader = ({
 
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-slate-200 pb-5 pt-5">
-      <div className="flex items-center gap-4 w-full lg:w-[500px]">
+      <div className="flex items-center gap-4 w-full lg:w-[400px]">
         {showBack && (
           <button
             onClick={() => navigate(-1)}
@@ -461,7 +501,7 @@ const TopHeader = ({
             type="text"
             value={searchValue}
             onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-            placeholder="Cari barang, transaksi, atau menu..."
+            placeholder="Cari..."
             className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-[12px] text-[13px] font-medium focus:border-slate-300 focus:ring-1 focus:ring-slate-200 outline-none transition-all text-slate-700 bg-white placeholder:text-slate-400"
           />
         </div>
@@ -645,6 +685,45 @@ const Dashboard = ({
   const totalValue = dateFilteredMaster.length;
   const rangeLabel = formattedDate;
 
+  // ── Kalkulasi stat nyata ──────────────────────────────────
+  // Total mutasi masuk & keluar periode ini
+  const totalMasuk = dateFilteredLogs
+    .filter(l => l.Tipe.toLowerCase() === 'masuk')
+    .reduce((acc, curr) => acc + Number(curr.Jumlah), 0);
+  const totalKeluar = dateFilteredLogs
+    .filter(l => l.Tipe.toLowerCase() === 'keluar')
+    .reduce((acc, curr) => acc + Number(curr.Jumlah), 0);
+
+  // Hitung periode sebelumnya untuk perbandingan
+  const getPrevBounds = (base: Date, range: RangeFilter) => {
+    if (range === 'Semua') return null;
+    const prev = new Date(base);
+    if (range === 'Hari')   prev.setDate(prev.getDate() - 1);
+    if (range === 'Minggu') prev.setDate(prev.getDate() - 7);
+    if (range === 'Bulan')  prev.setMonth(prev.getMonth() - 1);
+    if (range === 'Tahun')  prev.setFullYear(prev.getFullYear() - 1);
+    return getRangeBounds(prev, range);
+  };
+  const prevBounds = getPrevBounds(parseLocalDate(selectedDate), rangeFilter);
+  const prevLogs = prevBounds
+    ? logs.filter(l => {
+        const t = new Date(l.Waktu).getTime();
+        return t >= prevBounds.start.getTime() && t <= prevBounds.end.getTime();
+      })
+    : [];
+  const prevMasuk  = prevLogs.filter(l => l.Tipe.toLowerCase() === 'masuk').reduce((a, c) => a + Number(c.Jumlah), 0);
+  const prevKeluar = prevLogs.filter(l => l.Tipe.toLowerCase() === 'keluar').reduce((a, c) => a + Number(c.Jumlah), 0);
+
+  const calcPct = (curr: number, prev: number) => {
+    if (prev === 0) return curr > 0 ? '+100%' : '0%';
+    const pct = Math.round(((curr - prev) / prev) * 100);
+    return pct >= 0 ? `+${pct}%` : `${pct}%`;
+  };
+  const masukPct  = calcPct(totalMasuk, prevMasuk);
+  const keluarPct = calcPct(totalKeluar, prevKeluar);
+  const masukTrend  = totalMasuk  >= prevMasuk;
+  const keluarTrend = totalKeluar >= prevKeluar;
+
   const categoryChartData = useMemo(() => {
     const targetCategories = ["Alat Tulis", "Kertas", "Arsip"];
     const counts: Record<string, number> = {
@@ -654,15 +733,28 @@ const Dashboard = ({
       Lainnya: 0,
     };
 
+    // Mapping berdasarkan nama barang karena semua kategori di DB = 'ATK'
+    const kertasKeywords = ['kertas', 'hvs', 'folio', 'buram', 'photo paper', 'kop surat', 'kop', 'looself'];
+    const arsipKeywords = ['map', 'amplop', 'binder', 'clear holder', 'business file', 'bantex', 'box file', 'card case'];
+    const alatTulisKeywords = ['pulpen', 'pensil', 'spidol', 'stabilo', 'tipex', 'tipe x', 'rautan', 'penghapus', 'drawing pen', 'balliner', 'bolliner', 'snowman', 'pilot', 'sarasa', 'joyko', 'kokoro', 'faster'];
+
     chartFilteredMaster.forEach((item) => {
-      const cat = item.Kategori || "";
-      const matched = targetCategories.find((tc) =>
-        cat.toLowerCase().includes(tc.toLowerCase()),
-      );
-      if (matched) {
-        counts[matched] += 1;
+      const name = (item.NamaBarang || '').toLowerCase();
+      const cat = (item.Kategori || '').toLowerCase();
+
+      if (cat !== 'atk' && targetCategories.some(tc => cat.includes(tc.toLowerCase()))) {
+        const matched = targetCategories.find(tc => cat.toLowerCase().includes(tc.toLowerCase()));
+        if (matched) { counts[matched] += 1; return; }
+      }
+
+      if (kertasKeywords.some(k => name.includes(k))) {
+        counts['Kertas'] += 1;
+      } else if (arsipKeywords.some(k => name.includes(k))) {
+        counts['Arsip'] += 1;
+      } else if (alatTulisKeywords.some(k => name.includes(k))) {
+        counts['Alat Tulis'] += 1;
       } else {
-        counts["Lainnya"] += 1;
+        counts['Lainnya'] += 1;
       }
     });
 
@@ -715,7 +807,7 @@ const Dashboard = ({
             <ChevronDown size={14} className="text-slate-400 ml-2" />
           </button>
           {isDatePickerOpen && (
-            <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-xl p-4 shadow-lg z-20 w-[240px]">
+            <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 bg-white border border-slate-200 rounded-xl p-4 shadow-lg z-20 w-[240px] max-w-[calc(100vw-2rem)]">
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                 Tanggal
               </p>
@@ -741,7 +833,7 @@ const Dashboard = ({
               <Package size={20} />
             </div>
             <span className="text-[10px] font-bold text-[#991B1B] bg-white border border-[#FCE8E8] px-2.5 py-1 rounded-full">
-              +2% vs lalu
+              {rangeFilter === 'Semua' ? 'Semua Data' : rangeLabel}
             </span>
           </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
@@ -778,8 +870,8 @@ const Dashboard = ({
             <div className="p-3 bg-[#E0E7FF] text-[#3730A3] rounded-[12px]">
               <ArrowUpCircle size={20} />
             </div>
-            <span className="text-[10px] font-bold text-[#3730A3] bg-[#E0E7FF] px-2.5 py-1 rounded-full">
-              +12% vs lalu
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${masukTrend ? 'text-[#3730A3] bg-[#E0E7FF]' : 'text-[#991B1B] bg-[#FCE8E8]'}`}>
+              {rangeFilter === 'Semua' ? 'Semua Data' : masukPct + ' vs lalu'}
             </span>
           </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
@@ -799,8 +891,8 @@ const Dashboard = ({
             <div className="p-3 bg-[#F1F5F9] text-slate-500 rounded-[12px]">
               <ArrowDownCircle size={20} />
             </div>
-            <span className="text-[10px] font-bold text-slate-500 bg-[#F1F5F9] px-2.5 py-1 rounded-full">
-              Stabil
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${!keluarTrend ? 'text-[#3730A3] bg-[#E0E7FF]' : 'text-slate-500 bg-[#F1F5F9]'}`}>
+              {rangeFilter === 'Semua' ? 'Semua Data' : keluarPct + ' vs lalu'}
             </span>
           </div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
@@ -898,7 +990,7 @@ const Dashboard = ({
                   }}
                   formatter={(value) => [value, "Jumlah Produk"]}
                 />
-                <Bar dataKey="total" radius={[8, 8, 0, 0]} barSize={40}>
+                <Bar dataKey="total" radius={[8, 8, 0, 0]} barSize={32}>
                   {categoryChartData.map((entry, index) => {
                     const isMax =
                       entry.total ===
@@ -1052,12 +1144,14 @@ const MasterStok = ({
   searchQuery,
   onSearchChange,
   onLogoutClick,
+  showToast,
 }: {
   data: MasterBarang[];
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onLogoutClick: () => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'warning') => void;
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -1143,12 +1237,14 @@ const MasterStok = ({
     if (!result || result.success === false) {
       setIsLoading(false);
       setFormError(result?.error || "Gagal menyimpan perubahan.");
+      showToast(result?.error || "Gagal menyimpan perubahan.", "error");
       return;
     }
 
     setIsLoading(false);
     setIsModalOpen(false);
     setEditingItem(null);
+    showToast(editingItem ? "Barang berhasil diperbarui." : "Barang baru berhasil ditambahkan.");
     onRefresh();
   };
 
@@ -1159,7 +1255,12 @@ const MasterStok = ({
     setIsLoading(false);
     setIsDeleteModalOpen(false);
     setDeletingItem(null);
-    if (result.success) onRefresh();
+    if (result.success) {
+      showToast(`Barang "${deletingItem.NamaBarang}" berhasil dihapus.`);
+      onRefresh();
+    } else {
+      showToast("Gagal menghapus barang.", "error");
+    }
   };
 
   // Stat Card Calculations
@@ -1211,7 +1312,7 @@ const MasterStok = ({
             setFormError("");
             setIsModalOpen(true);
           }}
-          className="flex items-center gap-2 bg-[#E53935] text-white px-5 py-2.5 rounded-[10px] font-semibold text-[13px] hover:bg-red-700 transition-all shadow-sm active:scale-95"
+          className="flex items-center gap-2 bg-[#E53935] text-white px-5 py-2.5 rounded-[10px] font-semibold text-[13px] hover:bg-red-700 transition-all shadow-sm active:scale-95 w-full md:w-auto justify-center"
         >
           <Plus size={16} />
           Barang Baru
@@ -1296,25 +1397,25 @@ const MasterStok = ({
           <table className="w-full text-left">
             <thead className="border-b border-slate-100">
               <tr>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   ID Barang
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   Nama Produk
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   Kategori
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   Stok Fisik
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   Min. Stok
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   Status
                 </th>
-                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
+                <th className="px-3 py-4 md:px-6 md:py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
                   Aksi
                 </th>
               </tr>
@@ -1327,12 +1428,12 @@ const MasterStok = ({
                     key={item.IDBarang}
                     className="hover:bg-slate-50/50 transition-colors group"
                   >
-                    <td className="px-6 py-5">
+                    <td className="px-3 py-4 md:px-6 md:py-5">
                       <span className="text-[13px] font-bold text-blue-500">
                         #{item.IDBarang}
                       </span>
                     </td>
-                    <td className="px-6 py-5">
+                    <td className="px-3 py-4 md:px-6 md:py-5">
                       <p className="text-[14px] font-bold text-slate-800 leading-tight">
                         {item.NamaBarang}
                       </p>
@@ -1343,12 +1444,12 @@ const MasterStok = ({
                         )}
                       </p>
                     </td>
-                    <td className="px-6 py-5">
+                    <td className="px-3 py-4 md:px-6 md:py-5">
                       <span className="inline-flex items-center justify-center px-3 py-1 bg-[#F1F5F9] text-slate-500 rounded-[6px] text-[11px] font-bold uppercase tracking-wide">
                         {item.Kategori}
                       </span>
                     </td>
-                    <td className="px-6 py-5 text-center">
+                    <td className="px-3 py-4 md:px-6 md:py-5 text-center">
                       <div className="flex flex-col items-center">
                         <span
                           className={`text-[18px] font-bold leading-none mb-1 ${isCritical ? "text-[#E53935]" : "text-[#1E293B]"}`}
@@ -1360,12 +1461,12 @@ const MasterStok = ({
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-5 text-center">
+                    <td className="px-3 py-4 md:px-6 md:py-5 text-center">
                       <span className="text-[14px] font-bold text-slate-600">
                         {item.MinimumStok}
                       </span>
                     </td>
-                    <td className="px-6 py-5 text-center">
+                    <td className="px-3 py-4 md:px-6 md:py-5 text-center">
                       {isCritical ? (
                         <span className="inline-flex items-center justify-center px-3 py-1 bg-red-50 text-[#E53935] rounded-full text-[11px] font-bold">
                           Kritis
@@ -1376,7 +1477,7 @@ const MasterStok = ({
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-5 text-right">
+                    <td className="px-3 py-4 md:px-6 md:py-5 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => {
@@ -1494,7 +1595,7 @@ const MasterStok = ({
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div className="space-y-1.5">
                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
                     ID Katalog
@@ -1533,7 +1634,7 @@ const MasterStok = ({
                   placeholder="Masukkan nama barang..."
                 />
               </div>
-              <div className="grid grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div className="space-y-1.5">
                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
                     Stok Awal
@@ -1615,12 +1716,14 @@ const TransaksiStok = ({
   searchQuery,
   onSearchChange,
   onLogoutClick,
+  showToast,
 }: {
   master: MasterBarang[];
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onLogoutClick: () => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'warning') => void;
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [tipeMutasi, setTipeMutasi] = useState<"Masuk" | "Keluar" | "">("");
@@ -1641,7 +1744,7 @@ const TransaksiStok = ({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!tipeMutasi) {
-      alert("Pilih tipe mutasi terlebih dahulu!");
+      showToast("Pilih tipe mutasi terlebih dahulu!", "warning");
       return;
     }
     setIsLoading(true);
@@ -1650,20 +1753,36 @@ const TransaksiStok = ({
     const item = master.find(
       (m) => m.IDBarang.toString() === idBarang?.toString(),
     );
+    const jumlah = Number(formData.get("jumlah"));
+
+    // Validasi stok tidak bisa minus
+    if (tipeMutasi === "Keluar" && item && jumlah > item.StokSaatIni) {
+      showToast(
+        `Stok tidak cukup! Stok "${item.NamaBarang}" saat ini hanya ${item.StokSaatIni} ${item.Satuan}.`,
+        "error"
+      );
+      setIsLoading(false);
+      return;
+    }
+
     const payload = {
       idTransaksi: `T${Date.now()}`,
       idBarang: idBarang,
       namaBarang: item?.NamaBarang || "",
       tipe: tipeMutasi,
-      jumlah: Number(formData.get("jumlah")),
+      jumlah,
       catatan: catatan,
     };
-    await sheetService.addLog(payload);
+    const result = await sheetService.addLog(payload);
     setIsLoading(false);
+    if (result?.success === false) {
+      showToast(result?.error || "Transaksi gagal disimpan.", "error");
+      return;
+    }
     (e.target as HTMLFormElement).reset();
     setTipeMutasi("");
     setCatatan("");
-    alert("Transaksi Berhasil!");
+    showToast("Transaksi berhasil disimpan!");
     onRefresh();
   };
 
@@ -1693,7 +1812,7 @@ const TransaksiStok = ({
         </div>
 
         {/* Form Container */}
-        <div className="bg-white p-8 lg:p-10 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-200">
+        <div className="bg-white p-5 sm:p-8 lg:p-10 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-200">
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Pilih Produk */}
             <div>
@@ -1973,7 +2092,7 @@ const RiwayatTransaksi = ({
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8 border-b border-slate-200 pb-5 pt-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-slate-200 pb-5 pt-5">
           <div>
             <h2 className="text-[2rem] font-bold text-[#1E293B] tracking-tight leading-none mb-2">
               Jurnal Transaksi
@@ -1984,8 +2103,8 @@ const RiwayatTransaksi = ({
           </div>
 
           {/* Filter Card */}
-          <div className="flex items-center gap-3 bg-white p-2 rounded-[16px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-slate-200 w-fit">
-            <div className="flex items-center px-4 py-2 border border-slate-200 rounded-[12px] bg-white">
+          <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-[16px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-slate-200 w-full xl:w-fit">
+            <div className="flex items-center px-4 py-2 border border-slate-200 rounded-[12px] bg-white flex-1 min-w-[130px]">
               <Calendar size={16} className="text-slate-400 mr-2" />
               <input
                 type="date"
@@ -1995,7 +2114,7 @@ const RiwayatTransaksi = ({
               />
             </div>
             <span className="text-slate-300 font-bold">-</span>
-            <div className="flex items-center px-4 py-2 border border-slate-200 rounded-[12px] bg-white">
+            <div className="flex items-center px-4 py-2 border border-slate-200 rounded-[12px] bg-white flex-1 min-w-[130px]">
               <Calendar size={16} className="text-slate-400 mr-2" />
               <input
                 type="date"
@@ -2022,19 +2141,19 @@ const RiwayatTransaksi = ({
             <table className="w-full text-left">
               <thead className="border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                  <th className="px-3 py-4 md:px-8 md:py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                     Waktu
                   </th>
-                  <th className="px-8 py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                  <th className="px-3 py-4 md:px-8 md:py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                     Produk
                   </th>
-                  <th className="px-8 py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                  <th className="px-3 py-4 md:px-8 md:py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">
                     Aliran
                   </th>
-                  <th className="px-8 py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                  <th className="px-3 py-4 md:px-8 md:py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">
                     Qty
                   </th>
-                  <th className="px-8 py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                  <th className="px-3 py-4 md:px-8 md:py-6 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                     Catatan
                   </th>
                 </tr>
@@ -2060,7 +2179,7 @@ const RiwayatTransaksi = ({
                       key={idx}
                       className="hover:bg-slate-50/50 transition-colors group"
                     >
-                      <td className="px-8 py-6">
+                      <td className="px-3 py-4 md:px-8 md:py-6">
                         <p className="text-[13px] font-bold text-slate-800">
                           {dateStr}
                         </p>
@@ -2068,7 +2187,7 @@ const RiwayatTransaksi = ({
                           {timeStr}
                         </p>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-3 py-4 md:px-8 md:py-6">
                         <p className="text-[14px] font-bold text-slate-800 leading-tight">
                           {log.NamaBarang}
                         </p>
@@ -2076,7 +2195,7 @@ const RiwayatTransaksi = ({
                           REF: {log.IDTransaksi}
                         </p>
                       </td>
-                      <td className="px-8 py-6 text-center">
+                      <td className="px-3 py-4 md:px-8 md:py-6 text-center">
                         <span
                           className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                             log.Tipe === "Masuk"
@@ -2087,14 +2206,14 @@ const RiwayatTransaksi = ({
                           {log.Tipe}
                         </span>
                       </td>
-                      <td className="px-8 py-6 text-center">
+                      <td className="px-3 py-4 md:px-8 md:py-6 text-center">
                         <span
                           className={`text-[16px] font-bold ${log.Tipe === "Masuk" ? "text-blue-600" : "text-[#E53935]"}`}
                         >
                           {log.Jumlah}
                         </span>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-3 py-4 md:px-8 md:py-6">
                         <p className="text-[13px] font-medium text-slate-500 italic">
                           "{log.Catatan || "-"}"
                         </p>
@@ -2106,7 +2225,7 @@ const RiwayatTransaksi = ({
                   <tr>
                     <td
                       colSpan={5}
-                      className="px-8 py-16 text-center text-slate-400 text-sm font-medium"
+                      className="px-3 py-16 md:px-8 text-center text-slate-400 text-sm font-medium"
                     >
                       Tidak ada riwayat transaksi yang ditemukan.
                     </td>
@@ -2192,6 +2311,7 @@ const App = () => {
     "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua"
   >("Hari");
   const isFetchingRef = useRef(false);
+  const { toasts, show: showToast, remove: removeToast } = useToast();
 
   const fetchData = useCallback(async (options?: { silent?: boolean }) => {
     if (isFetchingRef.current) return;
@@ -2302,6 +2422,7 @@ const App = () => {
                       searchQuery={searchQuery}
                       onSearchChange={setSearchQuery}
                       onLogoutClick={() => setIsLogoutModalOpen(true)}
+                      showToast={showToast}
                     />
                   }
                 />
@@ -2314,6 +2435,7 @@ const App = () => {
                       searchQuery={searchQuery}
                       onSearchChange={setSearchQuery}
                       onLogoutClick={() => setIsLogoutModalOpen(true)}
+                      showToast={showToast}
                     />
                   }
                 />
@@ -2343,6 +2465,7 @@ const App = () => {
           confirmText="Keluar"
           message="Yakin ingin keluar?"
         />
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
       </div>
     </Router>
   );

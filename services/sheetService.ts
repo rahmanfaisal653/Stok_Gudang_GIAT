@@ -1,22 +1,14 @@
-
-// This would be your GAS Web App URL after deployment
-// Add explicit : string type to prevent TypeScript literal type overlap errors
-const GAS_URL: string = 'http://localhost:3001';
+// URL backend Node.js — dikonfigurasi via VITE_API_URL di file .env
+const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const sheetService = {
-  // Since we can't actually call a remote GAS without the user's URL,
-  // we'll implement a mock persistence for demonstration if URL is not provided.
   async getData() {
     try {
-      // Comparison fixed by adding : string type to GAS_URL above
-      if (GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
-         return this.getMockData();
-      }
-      const response = await fetch(`${GAS_URL}?action=getData`);
+      const response = await fetch(`${API_URL}?action=getData`);
       return await response.json();
     } catch (error) {
       console.error("Error fetching data:", error);
-      return this.getMockData();
+      return { master: [], logs: [] };
     }
   },
 
@@ -38,12 +30,7 @@ export const sheetService = {
 
   async postData(payload: any) {
     try {
-      // Comparison fixed by adding : string type to GAS_URL above
-      if (GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
-        console.log("Mocking POST request:", payload);
-        return { success: true };
-      }
-      const response = await fetch(GAS_URL, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -53,20 +40,5 @@ export const sheetService = {
       console.error("Error posting data:", error);
       return { success: false, error: "Connection Failed" };
     }
-  },
-
-  getMockData() {
-    return {
-      master: [
-        { IDBarang: 'B001', NamaBarang: 'Kertas A4 80gr', Kategori: 'Kertas', StokSaatIni: 45, MinimumStok: 50, Satuan: 'Rim', UpdateTerakhir: new Date().toISOString() },
-        { IDBarang: 'B002', NamaBarang: 'Bolpoint Pilot Blue', Kategori: 'Alat Tulis', StokSaatIni: 120, MinimumStok: 24, Satuan: 'Pcs', UpdateTerakhir: new Date().toISOString() },
-        { IDBarang: 'B003', NamaBarang: 'Tinta Epson 003 Black', Kategori: 'Tinta', StokSaatIni: 8, MinimumStok: 10, Satuan: 'Botol', UpdateTerakhir: new Date().toISOString() },
-        { IDBarang: 'B004', NamaBarang: 'Map Diamond Biru', Kategori: 'Map', StokSaatIni: 200, MinimumStok: 50, Satuan: 'Pcs', UpdateTerakhir: new Date().toISOString() },
-      ],
-      logs: [
-        { IDTransaksi: 'T001', IDBarang: 'B001', NamaBarang: 'Kertas A4 80gr', Tipe: 'Keluar', Jumlah: 5, Catatan: 'Divisi Keuangan', Waktu: new Date().toISOString() },
-        { IDTransaksi: 'T002', IDBarang: 'B002', NamaBarang: 'Bolpoint Pilot Blue', Tipe: 'Masuk', Jumlah: 50, Catatan: 'Restock Supplier', Waktu: new Date().toISOString() }
-      ]
-    };
   }
 };

@@ -322,6 +322,13 @@ const LoginPage = ({ onLogin }: { onLogin: (remember: boolean) => void }) => {
 
 // --- COMPONENTS ---
 
+const navigationItems = [
+  { label: "Dashboard", shortLabel: "Home", path: "/", icon: LayoutDashboard },
+  { label: "Stock Barang", shortLabel: "Stok", path: "/master", icon: Package },
+  { label: "Transaksi Stok", shortLabel: "Mutasi", path: "/transaksi", icon: ArrowLeftRight },
+  { label: "Riwayat", shortLabel: "Riwayat", path: "/logs", icon: History },
+];
+
 const Sidebar = ({
   isOpen,
   toggle,
@@ -332,12 +339,7 @@ const Sidebar = ({
   onLogoutClick: () => void;
 }) => {
   const location = useLocation();
-  const menuItems = [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Stock Barang", path: "/master", icon: Package },
-    { label: "Transaksi Stok", path: "/transaksi", icon: ArrowLeftRight },
-    { label: "Riwayat", path: "/logs", icon: History },
-  ];
+  const menuItems = navigationItems;
 
   return (
     <>
@@ -397,6 +399,30 @@ const Sidebar = ({
         </div>
       </aside>
     </>
+  );
+};
+
+const BottomNavigation = () => {
+  const location = useLocation();
+
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 bg-white/95 backdrop-blur-xl border-t border-slate-200 shadow-[0_-12px_30px_-20px_rgba(15,23,42,0.45)]">
+      <div className="grid grid-cols-4 gap-1 max-w-md mx-auto">
+        {navigationItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex flex-col items-center justify-center gap-1 rounded-2xl py-2.5 text-[10px] font-bold transition-all ${isActive ? "bg-[#FCE8E8] text-[#E53935]" : "text-slate-400 active:bg-slate-100"}`}
+            >
+              <item.icon size={20} strokeWidth={isActive ? 2.8 : 2.2} />
+              <span>{item.shortLabel}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 };
 
@@ -777,7 +803,7 @@ const Dashboard = ({
   }, [chartLowStockItems]);
 
   return (
-    <div className="w-full font-sans pb-10 px-4 lg:px-8 bg-[#FAF9F9]">
+    <div className="w-full font-sans pb-10 sm:px-4 lg:px-8 bg-[#FAF9F9]">
       <TopHeader
         searchValue={searchQuery}
         onSearchChange={onSearchChange}
@@ -1277,7 +1303,7 @@ const MasterStok = ({
   }).length;
 
   return (
-    <div className="w-full font-sans pb-10 px-4 lg:px-8 bg-[#FAF9F9]">
+    <div className="w-full font-sans pb-10 sm:px-4 lg:px-8 bg-[#FAF9F9]">
       <TopHeader
         onRefresh={onRefresh}
         searchValue={searchQuery}
@@ -1787,7 +1813,7 @@ const TransaksiStok = ({
   };
 
   return (
-    <div className="w-full font-sans pb-10 px-4 lg:px-8 bg-[#FAF9F9]">
+    <div className="w-full font-sans pb-10 sm:px-4 lg:px-8 bg-[#FAF9F9]">
       <TopHeader
         showBack={true}
         searchValue={searchQuery}
@@ -2082,7 +2108,7 @@ const RiwayatTransaksi = ({
   };
 
   return (
-    <div className="w-full font-sans pb-10 px-4 lg:px-8 bg-[#FAF9F9]">
+    <div className="w-full font-sans pb-10 sm:px-4 lg:px-8 bg-[#FAF9F9]">
       <TopHeader
         showBack={true}
         searchValue={searchQuery}
@@ -2380,16 +2406,20 @@ const App = () => {
           toggle={() => setIsSidebarOpen(!isSidebarOpen)}
           onLogoutClick={() => setIsLogoutModalOpen(true)}
         />
-        <main className="flex-1 lg:ml-64 transition-all">
-          <nav className="h-16 flex items-center justify-between px-8 bg-transparent sticky top-0 z-10 lg:hidden">
+        <main className="flex-1 lg:ml-64 transition-all pb-28 lg:pb-0">
+          <nav className="h-14 flex items-center justify-between px-4 bg-white/85 backdrop-blur-md sticky top-0 z-10 lg:hidden border-b border-slate-100">
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="text-slate-500 p-2"
+              className="text-slate-500 p-2 -ml-2 rounded-xl active:bg-slate-100"
             >
               <Menu size={24} />
             </button>
+            <div className="flex items-center gap-2">
+              <img src="/assets/logo%20giat%20remove%20bg.png" alt="Logo GIAT" className="w-7 h-7 object-contain" />
+              <span className="font-black text-sm tracking-tight text-slate-800">ATK<span className="text-[#E53935]">GIAT</span></span>
+            </div>
           </nav>
-          <div className="p-6 md:p-10 max-w-7xl mx-auto">
+          <div className="px-3 py-4 sm:px-5 md:p-8 lg:p-10 max-w-7xl mx-auto">
             {isLoading && masterData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[60vh]">
                 <Loader2 size={40} className="text-blue-600 animate-spin" />
@@ -2457,6 +2487,7 @@ const App = () => {
             )}
           </div>
         </main>
+        <BottomNavigation />
         <ConfirmationModal
           isOpen={isLogoutModalOpen}
           onClose={() => setIsLogoutModalOpen(false)}

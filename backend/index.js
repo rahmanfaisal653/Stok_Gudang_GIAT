@@ -5,8 +5,16 @@ require('dotenv').config();
 const pool = require('./db');
 const app  = express();
 
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:5173')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173'
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  }
 }));
 app.use(express.json());
 
@@ -73,6 +81,16 @@ app.post('/', async (req, res) => {
   try {
     // ── addBarang ──────────────────────────────
     if (action === 'addBarang') {
+      const stokSaatIni = Number(data.stokSaatIni);
+      const minimumStok = Number(data.minimumStok);
+
+      if (!data.idBarang || !data.namaBarang || !data.kategori || !data.satuan) {
+        return res.status(400).json({ success: false, error: 'Data barang tidak lengkap' });
+      }
+      if (!Number.isFinite(stokSaatIni) || stokSaatIni < 0 || !Number.isFinite(minimumStok) || minimumStok < 0) {
+        return res.status(400).json({ success: false, error: 'Stok dan minimum stok harus bernilai 0 atau lebih' });
+      }
+
       await pool.query(
         `INSERT INTO master_barang
            (IDBarang, NamaBarang, Kategori, StokSaatIni, MinimumStok, Satuan, UpdateTerakhir)
@@ -92,6 +110,16 @@ app.post('/', async (req, res) => {
 
     // ── updateBarang ───────────────────────────
     if (action === 'updateBarang') {
+      const stokSaatIni = Number(data.stokSaatIni);
+      const minimumStok = Number(data.minimumStok);
+
+      if (!data.idBarang || !data.namaBarang || !data.kategori || !data.satuan) {
+        return res.status(400).json({ success: false, error: 'Data barang tidak lengkap' });
+      }
+      if (!Number.isFinite(stokSaatIni) || stokSaatIni < 0 || !Number.isFinite(minimumStok) || minimumStok < 0) {
+        return res.status(400).json({ success: false, error: 'Stok dan minimum stok harus bernilai 0 atau lebih' });
+      }
+
       await pool.query(
         `UPDATE master_barang
          SET NamaBarang = ?, Kategori = ?, StokSaatIni = ?, MinimumStok = ?, Satuan = ?, UpdateTerakhir = ?
@@ -120,43 +148,71 @@ app.post('/', async (req, res) => {
 
     // ── addLog ─────────────────────────────────
     if (action === 'addLog') {
-      const now = new Date().toISOString();
-
-      // 1. Catat transaksi ke log_transaksi
-      await pool.query(
-        `INSERT INTO log_transaksi
-           (IDTransaksi, IDBarang, NamaBarang, Tipe, Jumlah, Catatan, Waktu)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          data.idTransaksi,
-          data.idBarang,
-          data.namaBarang,
-          data.tipe,
-          Number(data.jumlah),
-          data.catatan || '',
-          now
-        ]
-      );
-
-      // 2. Update stok di master_barang
       const jumlah = Number(data.jumlah);
-      if (data.tipe === 'Masuk' || data.tipe === 'MASUK') {
-        await pool.query(
-          `UPDATE master_barang
-           SET StokSaatIni = StokSaatIni + ?, UpdateTerakhir = ?
-           WHERE IDBarang = ?`,
-          [jumlah, now, data.idBarang]
-        );
-      } else if (data.tipe === 'Keluar' || data.tipe === 'KELUAR') {
-        await pool.query(
-          `UPDATE master_barang
-           SET StokSaatIni = StokSaatIni - ?, UpdateTerakhir = ?
-           WHERE IDBarang = ?`,
-          [jumlah, now, data.idBarang]
-        );
+      const tipe = String(data.tipe || '');
+
+      if (!data.idBarang || !data.idTransaksi) {
+        return res.status(400).json({ success: false, error: 'Data transaksi tidak lengkap' });
+      }
+      if (!Number.isFinite(jumlah) || jumlah <= 0) {
+        return res.status(400).json({ success: false, error: 'Jumlah transaksi harus lebih dari 0' });
+      }
+      if (!['Masuk', 'Keluar', 'MASUK', 'KELUAR'].includes(tipe)) {
+        return res.status(400).json({ success: false, error: 'Tipe transaksi tidak valid' });
       }
 
-      return res.json({ success: true });
+      const now = new Date().toISOString();
+      const connection = await pool.getConnection();
+
+      try {
+        await connection.beginTransaction();
+
+        const [rows] = await connection.query(
+          'SELECT NamaBarang, StokSaatIni FROM master_barang WHERE IDBarang = ? FOR UPDATE',
+          [data.idBarang]
+        );
+
+        if (rows.length === 0) {
+          throw new Error('Barang tidak ditemukan');
+        }
+
+        const currentStock = Number(rows[0].StokSaatIni);
+        const isKeluar = tipe === 'Keluar' || tipe === 'KELUAR';
+
+        if (isKeluar && jumlah > currentStock) {
+          throw new Error(`Stok tidak cukup. Stok saat ini hanya ${currentStock}`);
+        }
+
+        await connection.query(
+          `INSERT INTO log_transaksi
+             (IDTransaksi, IDBarang, NamaBarang, Tipe, Jumlah, Catatan, Waktu)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            data.idTransaksi,
+            data.idBarang,
+            data.namaBarang || rows[0].NamaBarang,
+            isKeluar ? 'Keluar' : 'Masuk',
+            jumlah,
+            data.catatan || '',
+            now
+          ]
+        );
+
+        await connection.query(
+          `UPDATE master_barang
+           SET StokSaatIni = StokSaatIni ${isKeluar ? '-' : '+'} ?, UpdateTerakhir = ?
+           WHERE IDBarang = ?`,
+          [jumlah, now, data.idBarang]
+        );
+
+        await connection.commit();
+        return res.json({ success: true });
+      } catch (err) {
+        await connection.rollback();
+        throw err;
+      } finally {
+        connection.release();
+      }
     }
 
     // ── unknown action ─────────────────────────

@@ -57,7 +57,9 @@ cp backend/.env.example backend/.env
 Contoh `frontend/.env` untuk production satu domain dengan reverse proxy `/api`:
 
 ```env
-VITE_API_URL=https://domain-kamu.com/api
+VITE_API_URL=https://domain-kamu.com/api/
+# atau jika frontend dan backend satu domain lewat Nginx:
+# VITE_API_URL=/api/
 ```
 
 Contoh `backend/.env`:
@@ -104,10 +106,14 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-Jika memakai Nginx satu domain, proxy `/api` ke backend:
+Jika memakai Nginx satu domain, proxy `/api/` ke backend. Pastikan trailing slash dipakai supaya request frontend menjadi `/api/?action=getData` dan query `action` tidak hilang saat redirect:
 
 ```nginx
-location /api/ {
+location = /api {
+    return 301 /api/;
+}
+
+location ^~ /api/ {
     proxy_pass http://127.0.0.1:3001/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

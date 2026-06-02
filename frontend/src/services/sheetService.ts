@@ -1,5 +1,6 @@
-// Default production memakai reverse proxy Nginx /api agar browser tidak memanggil localhost user.
-const API_URL: string = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+// Default production memakai reverse proxy Nginx /api/ agar browser tidak memanggil localhost user.
+const rawApiUrl: string = import.meta.env.VITE_API_URL || '/api/';
+const API_URL: string = rawApiUrl.endsWith('/') ? rawApiUrl : rawApiUrl + '/';
 
 export const sheetService = {
   async getData() {

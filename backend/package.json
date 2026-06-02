@@ -1,11 +1,12 @@
 {
   "name": "atk-giat-backend",
   "version": "1.0.0",
-  "description": "Node.js backend for ATK GIAT - migrated from Google Apps Script",
-  "main": "index.js",
+  "description": "Node.js backend for ATK GIAT stock management",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/config/env.js && node --check src/config/db.js && node --check src/controllers/inventoryController.js && node --check src/routes/inventoryRoutes.js && node --check src/services/inventoryService.js && node --check src/middleware/errorHandler.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

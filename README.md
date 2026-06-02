@@ -1,104 +1,128 @@
 # ATK GIAT - Stock Management
 
-Aplikasi manajemen stok ATK gudang berbasis React, Vite, Express, dan MySQL.
+Aplikasi manajemen stok ATK gudang berbasis React/Vite, Express, dan MySQL. Project sudah dipisah menjadi frontend dan backend agar lebih modular, mudah di-deploy, dan scalable.
+
+## Struktur
+
+```text
+.
+├── backend/
+│   ├── src/
+│   │   ├── app.js
+│   │   ├── server.js
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── routes/
+│   │   └── services/
+│   ├── .env.example
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── index.tsx
+│   │   ├── types.ts
+│   │   └── services/
+│   ├── public/assets/
+│   ├── .env.example
+│   └── package.json
+├── ecosystem.config.cjs
+└── package.json
+```
 
 ## Fitur
 
-- Dashboard stok dengan filter tanggal dan rentang periode.
-- Master barang: tambah, edit, hapus, pencarian, dan pagination.
-- Transaksi stok masuk/keluar dengan validasi stok.
-- Riwayat transaksi dengan filter tanggal, pencarian, dan pagination.
-- UI responsif untuk desktop, laptop, tablet, dan mobile.
-- Bottom navigation khusus mobile.
+- Dashboard stok dengan filter tanggal/rentang periode.
+- Master barang: tambah, edit, hapus, pencarian, pagination.
+- Transaksi stok masuk/keluar dengan validasi stok frontend dan backend.
+- Riwayat transaksi dengan filter tanggal, pencarian, pagination.
+- Backend memakai transaksi MySQL untuk mencegah stok minus/race condition.
+- UI responsif desktop, laptop, tablet, dan mobile dengan bottom navigation khusus HP.
 
-## Prasyarat
+## Setup
 
-- Node.js 20+
-- MySQL/MariaDB
-- NPM
-
-## Setup Frontend
-
-1. Install dependency root:
+Install semua dependency workspace:
 
 ```bash
 npm install
 ```
 
-2. Salin env frontend:
+Salin env:
 
 ```bash
-cp .env.example .env
+cp frontend/.env.example frontend/.env
+cp backend/.env.example backend/.env
 ```
 
-3. Sesuaikan URL backend di `.env`:
+Contoh `frontend/.env` untuk production satu domain dengan reverse proxy `/api`:
 
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=https://domain-kamu.com/api
 ```
 
-## Setup Backend
-
-1. Install dependency backend jika diperlukan:
-
-```bash
-cd backend
-npm install
-```
-
-2. Salin env backend:
-
-```bash
-cp .env.example .env
-```
-
-3. Sesuaikan konfigurasi database dan CORS di `backend/.env`:
+Contoh `backend/.env`:
 
 ```env
 PORT=3001
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password_here
+DB_USER=atk_giat_user
+DB_PASSWORD=password_kamu
 DB_NAME=atk_giat
-CORS_ORIGIN=http://localhost:3000,http://localhost:5173
+DB_CONNECTION_LIMIT=10
+CORS_ORIGIN=https://domain-kamu.com,https://www.domain-kamu.com
 ```
 
-## Struktur Database
-
-Aplikasi mengharapkan dua tabel utama:
-
-- `master_barang`: `IDBarang`, `NamaBarang`, `Kategori`, `StokSaatIni`, `MinimumStok`, `Satuan`, `UpdateTerakhir`
-- `log_transaksi`: `IDTransaksi`, `IDBarang`, `NamaBarang`, `Tipe`, `Jumlah`, `Catatan`, `Waktu`
-
-Pastikan tipe kolom stok/jumlah numerik dan kolom ID sesuai kebutuhan data existing.
-
-## Menjalankan Project
-
-Jalankan backend dan frontend sekaligus:
+## Menjalankan Lokal
 
 ```bash
 npm run dev
 ```
 
-Atau jalankan terpisah:
+Atau terpisah:
 
 ```bash
 npm run backend
 npm run frontend
 ```
 
-Frontend default berjalan di `http://localhost:3000`, backend di `http://localhost:3001`.
+Frontend default: `http://localhost:3000`.
+Backend default: `http://localhost:3001`.
+Health check backend: `http://localhost:3001/health`.
 
-## Build Production
+## Build Dan Deploy
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Untuk PM2, gunakan `ecosystem.config.cjs` setelah build frontend selesai.
+PM2:
 
-## Catatan Keamanan
+```bash
+pm2 start ecosystem.config.cjs
+pm2 save
+```
 
-Login saat ini masih hardcoded di frontend sesuai kebutuhan project. Untuk production publik, pertimbangkan migrasi ke auth backend/session/token di fase berikutnya.
+Jika memakai Nginx satu domain, proxy `/api` ke backend:
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:3001/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+## Struktur Database
+
+Aplikasi memakai dua tabel utama:
+
+- `master_barang`: `IDBarang`, `NamaBarang`, `Kategori`, `StokSaatIni`, `MinimumStok`, `Satuan`, `UpdateTerakhir`
+- `log_transaksi`: `IDTransaksi`, `IDBarang`, `NamaBarang`, `Tipe`, `Jumlah`, `Catatan`, `Waktu`
+
+## Catatan
+
+Login masih hardcoded di frontend sesuai kebutuhan saat ini. Untuk production publik, backend auth tetap direkomendasikan pada fase berikutnya.

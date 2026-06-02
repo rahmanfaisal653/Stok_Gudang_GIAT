@@ -1,5 +1,5 @@
-// URL backend Node.js — dikonfigurasi via VITE_API_URL di file .env
-const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Default production memakai reverse proxy Nginx /api agar browser tidak memanggil localhost user.
+const API_URL: string = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 export const sheetService = {
   async getData() {

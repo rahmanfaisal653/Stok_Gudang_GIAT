@@ -131,6 +131,20 @@ const getCategories = (master: MasterBarang[]) =>
 const isTextOnly = (value: FormDataEntryValue | null) =>
   TEXT_ONLY_PATTERN.test(String(value || "").trim());
 
+const isPositiveInteger = (value: FormDataEntryValue | null) => {
+  const text = String(value || "").trim();
+  return /^\d+$/.test(text) && Number(text) > 0;
+};
+
+const isNonNegativeInteger = (value: FormDataEntryValue | null) => {
+  const text = String(value || "").trim();
+  return /^\d+$/.test(text) && Number(text) >= 0;
+};
+
+const blockInvalidNumberInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault();
+};
+
 const parseLocalDate = (value: string) => {
   const [y, m, d] = value.split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
@@ -1235,6 +1249,9 @@ const MasterStok = ({
   const [deletingItem, setDeletingItem] = useState<MasterBarang | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
+  const [stockFilter, setStockFilter] = useState<"Semua" | "Aman" | "Kritis">("Semua");
+  const categoryOptions = useMemo(() => getCategories(data), [data]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -1243,13 +1260,26 @@ const MasterStok = ({
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const sortedData = useMemo(() => {
     return data
-      .filter(
-        (item) =>
+      .filter((item) => {
+        const matchesSearch =
           item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          item.IDBarang.toString().toLowerCase().includes(normalizedQuery),
-      )
+          item.IDBarang.toString().toLowerCase().includes(normalizedQuery) ||
+          item.Kategori.toLowerCase().includes(normalizedQuery) ||
+          item.Satuan.toLowerCase().includes(normalizedQuery);
+        const matchesCategory = categoryFilter === ALL_CATEGORIES || item.Kategori === categoryFilter;
+        const isCritical = item.StokSaatIni <= item.MinimumStok;
+        const matchesStock =
+          stockFilter === "Semua" ||
+          (stockFilter === "Kritis" && isCritical) ||
+          (stockFilter === "Aman" && !isCritical);
+        return matchesSearch && matchesCategory && matchesStock;
+      })
       .sort(numericSort);
-  }, [data, normalizedQuery]);
+  }, [data, normalizedQuery, categoryFilter, stockFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [normalizedQuery, categoryFilter, stockFilter]);
 
   // Pagination calculations
   const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
@@ -1293,8 +1323,19 @@ const MasterStok = ({
     setFormError("");
     setIsLoading(true);
     const formData = new FormData(e.currentTarget);
+    const namaBarang = String(formData.get("namaBarang") || "").trim();
     const kategori = formData.get("kategori");
     const satuan = formData.get("satuan");
+    const stokSaatIniRaw = formData.get("stokSaatIni");
+    const minimumStokRaw = formData.get("minimumStok");
+
+    if (!namaBarang) {
+      setIsLoading(false);
+      const message = "Nama produk wajib diisi.";
+      setFormError(message);
+      showToast(message, "warning");
+      return;
+    }
 
     if (!isTextOnly(kategori) || !isTextOnly(satuan)) {
       setIsLoading(false);
@@ -1304,13 +1345,21 @@ const MasterStok = ({
       return;
     }
 
+    if (!isNonNegativeInteger(stokSaatIniRaw) || !isNonNegativeInteger(minimumStokRaw)) {
+      setIsLoading(false);
+      const message = "Stok awal dan minimum stok wajib angka bulat 0 atau lebih. Huruf, koma, minus, dan desimal tidak boleh.";
+      setFormError(message);
+      showToast(message, "warning");
+      return;
+    }
+
     const payload = {
       ...(editingItem ? { idBarang: editingItem.IDBarang } : {}),
-      namaBarang: formData.get("namaBarang"),
-      kategori,
-      stokSaatIni: Number(formData.get("stokSaatIni")),
-      minimumStok: Number(formData.get("minimumStok")),
-      satuan,
+      namaBarang,
+      kategori: String(kategori).trim(),
+      stokSaatIni: Number(stokSaatIniRaw),
+      minimumStok: Number(minimumStokRaw),
+      satuan: String(satuan).trim(),
     };
 
     const result = editingItem
@@ -1471,6 +1520,45 @@ const MasterStok = ({
               30 Hari Terakhir
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-4 rounded-[18px] border border-slate-200 shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)]">
+        <div className="flex items-center gap-2 text-slate-600 font-bold text-[12px] uppercase tracking-wider">
+          <Filter size={16} className="text-[#E53935]" />
+          Filter Stok Barang
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-4 py-2.5 border border-slate-200 rounded-[12px] bg-white text-[13px] font-bold text-slate-700 outline-none focus:border-[#E53935]"
+          >
+            <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value as "Semua" | "Aman" | "Kritis")}
+            className="px-4 py-2.5 border border-slate-200 rounded-[12px] bg-white text-[13px] font-bold text-slate-700 outline-none focus:border-[#E53935]"
+          >
+            <option value="Semua">Semua Status</option>
+            <option value="Aman">Stok Aman</option>
+            <option value="Kritis">Stok Kritis</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              setCategoryFilter(ALL_CATEGORIES);
+              setStockFilter("Semua");
+              onSearchChange("");
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-[#E53935] rounded-[12px] text-[12px] font-bold uppercase transition-colors"
+          >
+            <RotateCcw size={14} /> Reset
+          </button>
         </div>
       </div>
 
@@ -1718,6 +1806,10 @@ const MasterStok = ({
                     type="number"
                     name="stokSaatIni"
                     defaultValue={editingItem?.StokSaatIni || 0}
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    onKeyDown={blockInvalidNumberInput}
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
                   />
@@ -1730,6 +1822,10 @@ const MasterStok = ({
                     type="number"
                     name="minimumStok"
                     defaultValue={editingItem?.MinimumStok || 0}
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    onKeyDown={blockInvalidNumberInput}
                     required
                     className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
                   />
@@ -1805,18 +1901,24 @@ const TransaksiStok = ({
   const [isLoading, setIsLoading] = useState(false);
   const [tipeMutasi, setTipeMutasi] = useState<"Masuk" | "Keluar" | "">("");
   const [catatan, setCatatan] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
+  const categoryOptions = useMemo(() => getCategories(master), [master]);
 
   // Mengurutkan master barang untuk dropdown
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const sortedMaster = useMemo(() => {
     const base = [...master].sort(numericSort);
-    if (!normalizedQuery) return base;
     return base.filter(
-      (item) =>
-        item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-        item.IDBarang.toString().toLowerCase().includes(normalizedQuery),
+      (item) => {
+        const matchesSearch =
+          item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
+          item.IDBarang.toString().toLowerCase().includes(normalizedQuery) ||
+          item.Kategori.toLowerCase().includes(normalizedQuery);
+        const matchesCategory = categoryFilter === ALL_CATEGORIES || item.Kategori === categoryFilter;
+        return matchesSearch && matchesCategory;
+      },
     );
-  }, [master, normalizedQuery]);
+  }, [master, normalizedQuery, categoryFilter]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1830,10 +1932,23 @@ const TransaksiStok = ({
     const item = master.find(
       (m) => m.IDBarang.toString() === idBarang?.toString(),
     );
-    const jumlah = Number(formData.get("jumlah"));
+    const jumlahRaw = formData.get("jumlah");
+    const jumlah = Number(jumlahRaw);
+
+    if (!item) {
+      showToast("Pilih barang yang valid terlebih dahulu.", "warning");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isPositiveInteger(jumlahRaw)) {
+      showToast("Qty wajib angka bulat lebih dari 0. Huruf, koma, minus, dan desimal tidak boleh.", "warning");
+      setIsLoading(false);
+      return;
+    }
 
     // Validasi stok tidak bisa minus
-    if (tipeMutasi === "Keluar" && item && jumlah > item.StokSaatIni) {
+    if (tipeMutasi === "Keluar" && jumlah > item.StokSaatIni) {
       showToast(
         `Stok tidak cukup! Stok "${item.NamaBarang}" saat ini hanya ${item.StokSaatIni} ${item.Satuan}.`,
         "error"
@@ -1845,7 +1960,7 @@ const TransaksiStok = ({
     const payload = {
       idTransaksi: `T${Date.now()}`,
       idBarang: idBarang,
-      namaBarang: item?.NamaBarang || "",
+      namaBarang: item.NamaBarang,
       tipe: tipeMutasi,
       jumlah,
       catatan: catatan,
@@ -1891,6 +2006,23 @@ const TransaksiStok = ({
         {/* Form Container */}
         <div className="bg-white p-5 sm:p-8 lg:p-10 rounded-[24px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-200">
           <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-100 rounded-[16px]">
+              <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-slate-600">
+                <Filter size={16} className="text-[#E53935]" />
+                Filter Produk
+              </div>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-4 py-2.5 border border-slate-200 rounded-[12px] bg-white text-[13px] font-bold text-slate-700 outline-none focus:border-[#E53935]"
+              >
+                <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Pilih Produk */}
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2.5">
@@ -2007,6 +2139,9 @@ const TransaksiStok = ({
                     type="number"
                     name="jumlah"
                     min="1"
+                    step="1"
+                    inputMode="numeric"
+                    onKeyDown={blockInvalidNumberInput}
                     required
                     className="w-full pl-11 pr-[60px] py-3.5 border border-slate-200 rounded-l-[12px] bg-white outline-none focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] transition-all text-[14px] font-bold text-slate-800"
                     placeholder="0"

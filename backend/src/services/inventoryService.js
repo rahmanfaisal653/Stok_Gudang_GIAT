@@ -1,6 +1,25 @@
 const pool = require('../config/db');
 
 const VALID_TRANSACTION_TYPES = new Set(['Masuk', 'Keluar', 'MASUK', 'KELUAR']);
+const TEXT_ONLY_PATTERN = /^[A-Za-zÀ-ÿ\s./-]+$/;
+
+function normalizeIdBarang(value, required = true) {
+  if ((value === undefined || value === null || value === '') && !required) return null;
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw createHttpError(400, 'ID barang harus berupa angka bulat positif');
+  }
+  return id;
+}
+
+function normalizeText(value, fieldName) {
+  const text = String(value || '').trim();
+  if (!text) throw createHttpError(400, `${fieldName} wajib diisi`);
+  if (!TEXT_ONLY_PATTERN.test(text)) {
+    throw createHttpError(400, `${fieldName} hanya boleh berisi huruf dan spasi`);
+  }
+  return text;
+}
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -36,7 +55,7 @@ function normalizeBarangPayload(data) {
   const stokSaatIni = Number(data.stokSaatIni);
   const minimumStok = Number(data.minimumStok);
 
-  if (!data.idBarang || !data.namaBarang || !data.kategori || !data.satuan) {
+  if (!data.namaBarang || !data.kategori || !data.satuan) {
     throw createHttpError(400, 'Data barang tidak lengkap');
   }
 
@@ -45,12 +64,12 @@ function normalizeBarangPayload(data) {
   }
 
   return {
-    idBarang: data.idBarang,
+    idBarang: normalizeIdBarang(data.idBarang, false),
     namaBarang: String(data.namaBarang).trim(),
-    kategori: String(data.kategori).trim(),
+    kategori: normalizeText(data.kategori, 'Kategori'),
     stokSaatIni,
     minimumStok,
-    satuan: String(data.satuan).trim(),
+    satuan: normalizeText(data.satuan, 'Satuan'),
   };
 }
 
@@ -72,7 +91,7 @@ function normalizeLogPayload(data) {
 
   return {
     idTransaksi: data.idTransaksi,
-    idBarang: data.idBarang,
+    idBarang: normalizeIdBarang(data.idBarang),
     namaBarang: data.namaBarang,
     tipe: tipe === 'Keluar' || tipe === 'KELUAR' ? 'Keluar' : 'Masuk',
     jumlah,
@@ -81,7 +100,7 @@ function normalizeLogPayload(data) {
 }
 
 async function getData() {
-  const [masterRows] = await pool.query('SELECT * FROM master_barang ORDER BY CAST(IDBarang AS UNSIGNED)');
+  const [masterRows] = await pool.query('SELECT * FROM master_barang ORDER BY IDBarang ASC');
   const [logRows] = await pool.query('SELECT * FROM log_transaksi ORDER BY Waktu ASC');
 
   return {
@@ -95,10 +114,9 @@ async function addBarang(data) {
 
   await pool.query(
     `INSERT INTO master_barang
-       (IDBarang, NamaBarang, Kategori, StokSaatIni, MinimumStok, Satuan, UpdateTerakhir)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (NamaBarang, Kategori, StokSaatIni, MinimumStok, Satuan, UpdateTerakhir)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     [
-      payload.idBarang,
       payload.namaBarang,
       payload.kategori,
       payload.stokSaatIni,
@@ -137,9 +155,9 @@ async function updateBarang(data) {
 }
 
 async function deleteBarang(idBarang) {
-  if (!idBarang) throw createHttpError(400, 'ID barang wajib diisi');
+  const id = normalizeIdBarang(idBarang);
 
-  const [result] = await pool.query('DELETE FROM master_barang WHERE IDBarang = ?', [idBarang]);
+  const [result] = await pool.query('DELETE FROM master_barang WHERE IDBarang = ?', [id]);
   if (result.affectedRows === 0) {
     throw createHttpError(404, 'Barang tidak ditemukan');
   }

@@ -111,6 +111,11 @@ const useToast = () => {
 };
 
 // --- HELPERS ---
+type RangeFilter = "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua";
+const RANGE_OPTIONS: RangeFilter[] = ["Hari", "Minggu", "Bulan", "Tahun", "Semua"];
+const ALL_CATEGORIES = "Semua Kategori";
+const TEXT_ONLY_PATTERN = /^[A-Za-zÀ-ÿ\s./-]+$/;
+
 const numericSort = (a: MasterBarang, b: MasterBarang) => {
   const idA = a.IDBarang.toString();
   const idB = b.IDBarang.toString();
@@ -118,6 +123,49 @@ const numericSort = (a: MasterBarang, b: MasterBarang) => {
     numeric: true,
     sensitivity: "base",
   });
+};
+
+const getCategories = (master: MasterBarang[]) =>
+  Array.from(new Set(master.map((item) => item.Kategori).filter(Boolean))).sort();
+
+const isTextOnly = (value: FormDataEntryValue | null) =>
+  TEXT_ONLY_PATTERN.test(String(value || "").trim());
+
+const parseLocalDate = (value: string) => {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+
+const getRangeBounds = (baseDate: Date, range: RangeFilter) => {
+  if (range === "Semua") return null;
+  const start = new Date(baseDate);
+  const end = new Date(baseDate);
+  if (range === "Hari") {
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+  if (range === "Minggu") {
+    const day = start.getDay();
+    const diff = (day + 6) % 7;
+    start.setDate(start.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+  if (range === "Bulan") {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    end.setMonth(start.getMonth() + 1, 0);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+  start.setMonth(0, 1);
+  start.setHours(0, 0, 0, 0);
+  end.setMonth(11, 31);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
 };
 
 // --- THEME COLORS ---
@@ -575,8 +623,10 @@ const Dashboard = ({
   logs,
   selectedDate,
   rangeFilter,
+  selectedCategory,
   onSelectedDateChange,
   onRangeFilterChange,
+  onSelectedCategoryChange,
   searchQuery,
   onSearchChange,
   onLogoutClick,
@@ -584,11 +634,11 @@ const Dashboard = ({
   master: MasterBarang[];
   logs: LogTransaksi[];
   selectedDate: string;
-  rangeFilter: "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua";
+  rangeFilter: RangeFilter;
+  selectedCategory: string;
   onSelectedDateChange: (value: string) => void;
-  onRangeFilterChange: (
-    value: "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua",
-  ) => void;
+  onRangeFilterChange: (value: RangeFilter) => void;
+  onSelectedCategoryChange: (value: string) => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onLogoutClick: () => void;
@@ -610,13 +660,8 @@ const Dashboard = ({
       )
     : logs;
 
-  type RangeFilter = "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua";
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-
-  const parseLocalDate = (value: string) => {
-    const [y, m, d] = value.split("-").map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
-  };
+  const [showCriticalDetails, setShowCriticalDetails] = useState(false);
 
   const formattedDate = parseLocalDate(selectedDate).toLocaleDateString(
     "id-ID",
@@ -627,41 +672,20 @@ const Dashboard = ({
     },
   );
 
-  const getRangeBounds = (baseDate: Date, range: RangeFilter) => {
-    if (range === "Semua") return null;
-    const start = new Date(baseDate);
-    const end = new Date(baseDate);
-    if (range === "Hari") {
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    }
-    if (range === "Minggu") {
-      const day = start.getDay();
-      const diff = (day + 6) % 7;
-      start.setDate(start.getDate() - diff);
-      start.setHours(0, 0, 0, 0);
-      end.setDate(start.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    }
-    if (range === "Bulan") {
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      end.setMonth(start.getMonth() + 1, 0);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    }
-    start.setMonth(0, 1);
-    start.setHours(0, 0, 0, 0);
-    end.setMonth(11, 31);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-  };
+  const categoryOptions = useMemo(() => getCategories(master), [master]);
+  const categoryFilteredMaster = selectedCategory === ALL_CATEGORIES
+    ? filteredMaster
+    : filteredMaster.filter((item) => item.Kategori === selectedCategory);
+  const categoryFilteredLogs = selectedCategory === ALL_CATEGORIES
+    ? filteredLogs
+    : filteredLogs.filter((log) => {
+        const item = master.find((barang) => barang.IDBarang.toString() === log.IDBarang.toString());
+        return item?.Kategori === selectedCategory;
+      });
 
   const rangeBounds = getRangeBounds(parseLocalDate(selectedDate), rangeFilter);
   const dateFilteredMaster = rangeBounds
-    ? filteredMaster.filter((item) => {
+    ? categoryFilteredMaster.filter((item) => {
         const time = new Date(item.UpdateTerakhir).getTime();
         if (Number.isNaN(time)) return false;
         return (
@@ -669,9 +693,9 @@ const Dashboard = ({
           time <= rangeBounds.end.getTime()
         );
       })
-    : filteredMaster;
+    : categoryFilteredMaster;
   const dateFilteredLogs = rangeBounds
-    ? filteredLogs.filter((log) => {
+    ? categoryFilteredLogs.filter((log) => {
         const time = new Date(log.Waktu).getTime();
         if (Number.isNaN(time)) return false;
         return (
@@ -679,10 +703,10 @@ const Dashboard = ({
           time <= rangeBounds.end.getTime()
         );
       })
-    : filteredLogs;
+    : categoryFilteredLogs;
 
   const chartFilteredMaster = rangeBounds
-    ? filteredMaster.filter((item) => {
+    ? categoryFilteredMaster.filter((item) => {
         const time = new Date(item.UpdateTerakhir).getTime();
         if (Number.isNaN(time)) return false;
         return (
@@ -690,9 +714,9 @@ const Dashboard = ({
           time <= rangeBounds.end.getTime()
         );
       })
-    : filteredMaster;
+    : categoryFilteredMaster;
   const chartFilteredLogs = rangeBounds
-    ? filteredLogs.filter((log) => {
+    ? categoryFilteredLogs.filter((log) => {
         const time = new Date(log.Waktu).getTime();
         if (Number.isNaN(time)) return false;
         return (
@@ -700,7 +724,7 @@ const Dashboard = ({
           time <= rangeBounds.end.getTime()
         );
       })
-    : filteredLogs;
+    : categoryFilteredLogs;
 
   const lowStockItems = dateFilteredMaster.filter(
     (item) => item.StokSaatIni <= item.MinimumStok,
@@ -732,7 +756,7 @@ const Dashboard = ({
   };
   const prevBounds = getPrevBounds(parseLocalDate(selectedDate), rangeFilter);
   const prevLogs = prevBounds
-    ? logs.filter(l => {
+    ? categoryFilteredLogs.filter(l => {
         const t = new Date(l.Waktu).getTime();
         return t >= prevBounds.start.getTime() && t <= prevBounds.end.getTime();
       })
@@ -849,6 +873,19 @@ const Dashboard = ({
             </div>
           )}
         </div>
+        <div className="relative">
+          <select
+            value={selectedCategory}
+            onChange={(e) => onSelectedCategoryChange(e.target.value)}
+            className="appearance-none w-full md:w-[190px] bg-white border border-slate-200 px-4 py-2 rounded-[10px] text-[13px] font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition-all pr-9"
+          >
+            <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -873,7 +910,11 @@ const Dashboard = ({
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-[20px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-red-50 relative">
+        <button
+          type="button"
+          onClick={() => setShowCriticalDetails((prev) => !prev)}
+          className="text-left bg-white p-6 rounded-[20px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-red-50 relative hover:-translate-y-0.5 hover:shadow-md transition-all"
+        >
           <div className="flex justify-between items-start mb-6">
             <div className="p-3 bg-[#FCE8E8] text-[#991B1B] rounded-[12px]">
               <AlertTriangle size={20} />
@@ -888,8 +929,8 @@ const Dashboard = ({
           <h3 className="text-[2rem] font-bold text-[#991B1B] leading-none mb-3">
             {lowStockItems.length}
           </h3>
-          <p className="text-[12px] text-[#991B1B] font-medium">Butuh Atensi</p>
-        </div>
+          <p className="text-[12px] text-[#991B1B] font-medium">Klik untuk lihat barang</p>
+        </button>
 
         <div className="bg-white p-6 rounded-[20px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-slate-100 relative">
           <div className="flex justify-between items-start mb-6">
@@ -934,6 +975,31 @@ const Dashboard = ({
         </div>
       </div>
 
+      {showCriticalDetails && (
+        <div className="bg-white border border-red-100 rounded-[20px] p-5 mb-8 shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)]">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-[15px] font-bold text-slate-900">Daftar Stok Kritis</h3>
+              <p className="text-[12px] text-slate-500">Filter mengikuti rentang waktu dan kategori dashboard.</p>
+            </div>
+            <span className="text-[11px] font-bold text-[#991B1B] bg-[#FCE8E8] px-3 py-1 rounded-full">
+              {lowStockItems.length} barang
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {lowStockItems.map((item) => (
+              <div key={item.IDBarang} className="rounded-xl border border-red-50 bg-red-50/40 p-3">
+                <p className="text-[13px] font-bold text-slate-800">#{item.IDBarang} - {item.NamaBarang}</p>
+                <p className="text-[11px] text-slate-500 mt-1">{item.Kategori} • {item.StokSaatIni} {item.Satuan} / min {item.MinimumStok}</p>
+              </div>
+            ))}
+            {lowStockItems.length === 0 && (
+              <p className="text-[13px] font-semibold text-slate-400">Tidak ada barang kritis pada filter ini.</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Chart */}
@@ -959,15 +1025,7 @@ const Dashboard = ({
                   }
                   className="appearance-none pr-8 pl-3 py-1.5 border border-slate-200 rounded-[8px] text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 shadow-sm"
                 >
-                  {(
-                    [
-                      "Hari",
-                      "Minggu",
-                      "Bulan",
-                      "Tahun",
-                      "Semua",
-                    ] as RangeFilter[]
-                  ).map((option) => (
+                  {RANGE_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -1065,15 +1123,7 @@ const Dashboard = ({
                   }
                   className="appearance-none pr-8 pl-3 py-1.5 border border-slate-200 rounded-[8px] text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 shadow-sm"
                 >
-                  {(
-                    [
-                      "Hari",
-                      "Minggu",
-                      "Bulan",
-                      "Tahun",
-                      "Semua",
-                    ] as RangeFilter[]
-                  ).map((option) => (
+                  {RANGE_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -1243,17 +1293,24 @@ const MasterStok = ({
     setFormError("");
     setIsLoading(true);
     const formData = new FormData(e.currentTarget);
-    const idBarang = editingItem
-      ? editingItem.IDBarang
-      : formData.get("idBarang");
+    const kategori = formData.get("kategori");
+    const satuan = formData.get("satuan");
+
+    if (!isTextOnly(kategori) || !isTextOnly(satuan)) {
+      setIsLoading(false);
+      const message = "Kategori dan satuan hanya boleh berisi huruf, spasi, titik, garis miring, atau strip.";
+      setFormError(message);
+      showToast(message, "warning");
+      return;
+    }
 
     const payload = {
-      idBarang: idBarang,
+      ...(editingItem ? { idBarang: editingItem.IDBarang } : {}),
       namaBarang: formData.get("namaBarang"),
-      kategori: formData.get("kategori"),
+      kategori,
       stokSaatIni: Number(formData.get("stokSaatIni")),
       minimumStok: Number(formData.get("minimumStok")),
-      satuan: formData.get("satuan"),
+      satuan,
     };
 
     const result = editingItem
@@ -1621,32 +1678,24 @@ const MasterStok = ({
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                    ID Katalog
-                  </label>
-                  <input
-                    name="idBarang"
-                    defaultValue={editingItem?.IDBarang}
-                    required
-                    readOnly={!!editingItem}
-                    className={`w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 ${editingItem ? "bg-slate-50 cursor-not-allowed" : "bg-white"}`}
-                    placeholder="Contoh: 1"
-                  />
+              {editingItem && (
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-[12px] font-semibold text-slate-500">
+                  ID Barang: #{editingItem.IDBarang}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                    Kategori
-                  </label>
-                  <input
-                    name="kategori"
-                    defaultValue={editingItem?.Kategori}
-                    required
-                    className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
-                    placeholder="ATK / Kertas"
-                  />
-                </div>
+              )}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                  Kategori
+                </label>
+                <input
+                  name="kategori"
+                  defaultValue={editingItem?.Kategori}
+                  required
+                  pattern="[A-Za-zÀ-ÿ\s./-]+"
+                  title="Kategori hanya boleh berisi huruf dan spasi"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
+                  placeholder="ATK / Kertas"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
@@ -1690,11 +1739,13 @@ const MasterStok = ({
                     Satuan
                   </label>
                   <input
-                    name="satuan"
-                    defaultValue={editingItem?.Satuan}
-                    required
-                    className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
-                    placeholder="Pcs/Rim"
+                  name="satuan"
+                  defaultValue={editingItem?.Satuan}
+                  required
+                  pattern="[A-Za-zÀ-ÿ\s./-]+"
+                  title="Satuan hanya boleh berisi huruf dan spasi"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
+                  placeholder="Pcs/Rim"
                   />
                 </div>
               </div>
@@ -2021,6 +2072,7 @@ const TransaksiStok = ({
 
 const RiwayatTransaksi = ({
   logs,
+  master,
   selectedDate,
   rangeFilter,
   searchQuery,
@@ -2028,14 +2080,18 @@ const RiwayatTransaksi = ({
   onLogoutClick,
 }: {
   logs: LogTransaksi[];
+  master: MasterBarang[];
   selectedDate: string;
-  rangeFilter: "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua";
+  rangeFilter: RangeFilter;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onLogoutClick: () => void;
 }) => {
-  const [filterStart, setFilterStart] = useState("");
-  const [filterEnd, setFilterEnd] = useState("");
+  const [filterStart, setFilterStart] = useState(selectedDate);
+  const [filterEnd, setFilterEnd] = useState(selectedDate);
+  const [logRangeFilter, setLogRangeFilter] = useState<RangeFilter>(rangeFilter);
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
+  const categoryOptions = useMemo(() => getCategories(master), [master]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -2044,7 +2100,20 @@ const RiwayatTransaksi = ({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStart, filterEnd]);
+  }, [filterStart, filterEnd, logRangeFilter, selectedCategory]);
+
+  useEffect(() => {
+    if (!filterStart) return;
+    const bounds = getRangeBounds(parseLocalDate(filterStart), logRangeFilter);
+    if (!bounds) {
+      setFilterStart("");
+      setFilterEnd("");
+      return;
+    }
+    const toInputDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    setFilterStart(toInputDate(bounds.start));
+    setFilterEnd(toInputDate(bounds.end));
+  }, [logRangeFilter]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredLogs = useMemo(() => {
@@ -2059,6 +2128,12 @@ const RiwayatTransaksi = ({
       end.setHours(23, 59, 59, 999);
       result = result.filter((log) => new Date(log.Waktu) <= end);
     }
+    if (selectedCategory !== ALL_CATEGORIES) {
+      result = result.filter((log) => {
+        const item = master.find((barang) => barang.IDBarang.toString() === log.IDBarang.toString());
+        return item?.Kategori === selectedCategory;
+      });
+    }
     if (normalizedQuery) {
       result = result.filter(
         (log) =>
@@ -2068,7 +2143,7 @@ const RiwayatTransaksi = ({
       );
     }
     return result;
-  }, [logs, filterStart, filterEnd, normalizedQuery]);
+  }, [logs, master, filterStart, filterEnd, selectedCategory, normalizedQuery]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredLogs.length / ITEMS_PER_PAGE);
@@ -2130,6 +2205,25 @@ const RiwayatTransaksi = ({
 
           {/* Filter Card */}
           <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-[16px] shadow-[0_4px_10px_-4px_rgba(0,0,0,0.03)] border border-slate-200 w-full xl:w-fit">
+            <select
+              value={logRangeFilter}
+              onChange={(e) => setLogRangeFilter(e.target.value as RangeFilter)}
+              className="px-4 py-2 border border-slate-200 rounded-[12px] bg-white text-[13px] font-bold text-slate-700 outline-none"
+            >
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-4 py-2 border border-slate-200 rounded-[12px] bg-white text-[13px] font-bold text-slate-700 outline-none"
+            >
+              <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
+              {categoryOptions.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
             <div className="flex items-center px-4 py-2 border border-slate-200 rounded-[12px] bg-white flex-1 min-w-[130px]">
               <Calendar size={16} className="text-slate-400 mr-2" />
               <input
@@ -2153,6 +2247,8 @@ const RiwayatTransaksi = ({
               onClick={() => {
                 setFilterStart("");
                 setFilterEnd("");
+                setLogRangeFilter("Semua");
+                setSelectedCategory(ALL_CATEGORIES);
               }}
               className="flex items-center gap-2 px-5 py-2.5 bg-red-50 hover:bg-red-100 text-[#E53935] rounded-[12px] text-[12px] font-bold uppercase transition-colors"
             >
@@ -2333,9 +2429,8 @@ const App = () => {
     const d = String(now.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   });
-  const [rangeFilter, setRangeFilter] = useState<
-    "Hari" | "Minggu" | "Bulan" | "Tahun" | "Semua"
-  >("Hari");
+  const [rangeFilter, setRangeFilter] = useState<RangeFilter>("Hari");
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
   const isFetchingRef = useRef(false);
   const { toasts, show: showToast, remove: removeToast } = useToast();
 
@@ -2435,8 +2530,10 @@ const App = () => {
                       logs={logData}
                       selectedDate={selectedDate}
                       rangeFilter={rangeFilter}
+                      selectedCategory={selectedCategory}
                       onSelectedDateChange={setSelectedDate}
                       onRangeFilterChange={setRangeFilter}
+                      onSelectedCategoryChange={setSelectedCategory}
                       searchQuery={searchQuery}
                       onSearchChange={setSearchQuery}
                       onLogoutClick={() => setIsLogoutModalOpen(true)}
@@ -2474,6 +2571,7 @@ const App = () => {
                   element={
                     <RiwayatTransaksi
                       logs={logData}
+                      master={masterData}
                       selectedDate={selectedDate}
                       rangeFilter={rangeFilter}
                       searchQuery={searchQuery}

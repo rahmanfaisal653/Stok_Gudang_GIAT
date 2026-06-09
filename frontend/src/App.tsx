@@ -116,13 +116,29 @@ const RANGE_OPTIONS: RangeFilter[] = ["Hari", "Minggu", "Bulan", "Tahun", "Semua
 const ALL_CATEGORIES = "Semua Kategori";
 const TEXT_ONLY_PATTERN = /^[A-Za-zÀ-ÿ\s./-]+$/;
 
-const numericSort = (a: MasterBarang, b: MasterBarang) => {
-  const idA = a.IDBarang.toString();
-  const idB = b.IDBarang.toString();
-  return idA.localeCompare(idB, undefined, {
+const safeString = (value: unknown) => String(value ?? "");
+const safeLower = (value: unknown) => safeString(value).toLowerCase();
+const idNumber = (value: unknown) => {
+  const match = safeString(value).match(/\d+/g);
+  return match ? Number(match.join("")) : Number.POSITIVE_INFINITY;
+};
+
+const compareIdsAsc = (a: unknown, b: unknown) => {
+  const numberDiff = idNumber(a) - idNumber(b);
+  if (numberDiff !== 0) return numberDiff;
+  return safeString(a).localeCompare(safeString(b), undefined, {
     numeric: true,
     sensitivity: "base",
   });
+};
+
+const numericSort = (a: MasterBarang, b: MasterBarang) =>
+  compareIdsAsc(a.IDBarang, b.IDBarang);
+
+const transactionSort = (a: LogTransaksi, b: LogTransaksi) => {
+  const idDiff = compareIdsAsc(b.IDTransaksi, a.IDTransaksi);
+  if (idDiff !== 0) return idDiff;
+  return new Date(b.Waktu).getTime() - new Date(a.Waktu).getTime();
 };
 
 const getCategories = (master: MasterBarang[]) =>
@@ -661,15 +677,15 @@ const Dashboard = ({
   const filteredMaster = normalizedQuery
     ? master.filter(
         (item) =>
-          item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          item.IDBarang.toString().toLowerCase().includes(normalizedQuery),
+          safeLower(item.NamaBarang).includes(normalizedQuery) ||
+          safeLower(item.IDBarang).includes(normalizedQuery),
       )
     : master;
   const filteredLogs = normalizedQuery
     ? logs.filter(
         (log) =>
-          log.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          log.IDTransaksi.toString().toLowerCase().includes(normalizedQuery) ||
+          safeLower(log.NamaBarang).includes(normalizedQuery) ||
+          safeLower(log.IDTransaksi).includes(normalizedQuery) ||
           (log.Catatan || "").toLowerCase().includes(normalizedQuery),
       )
     : logs;
@@ -693,7 +709,7 @@ const Dashboard = ({
   const categoryFilteredLogs = selectedCategory === ALL_CATEGORIES
     ? filteredLogs
     : filteredLogs.filter((log) => {
-        const item = master.find((barang) => barang.IDBarang.toString() === log.IDBarang.toString());
+        const item = master.find((barang) => safeString(barang.IDBarang) === safeString(log.IDBarang));
         return item?.Kategori === selectedCategory;
       });
 
@@ -1262,10 +1278,10 @@ const MasterStok = ({
     return data
       .filter((item) => {
         const matchesSearch =
-          item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          item.IDBarang.toString().toLowerCase().includes(normalizedQuery) ||
-          item.Kategori.toLowerCase().includes(normalizedQuery) ||
-          item.Satuan.toLowerCase().includes(normalizedQuery);
+          safeLower(item.NamaBarang).includes(normalizedQuery) ||
+          safeLower(item.IDBarang).includes(normalizedQuery) ||
+          safeLower(item.Kategori).includes(normalizedQuery) ||
+          safeLower(item.Satuan).includes(normalizedQuery);
         const matchesCategory = categoryFilter === ALL_CATEGORIES || item.Kategori === categoryFilter;
         const isCritical = item.StokSaatIni <= item.MinimumStok;
         const matchesStock =
@@ -1911,9 +1927,9 @@ const TransaksiStok = ({
     return base.filter(
       (item) => {
         const matchesSearch =
-          item.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          item.IDBarang.toString().toLowerCase().includes(normalizedQuery) ||
-          item.Kategori.toLowerCase().includes(normalizedQuery);
+          safeLower(item.NamaBarang).includes(normalizedQuery) ||
+          safeLower(item.IDBarang).includes(normalizedQuery) ||
+          safeLower(item.Kategori).includes(normalizedQuery);
         const matchesCategory = categoryFilter === ALL_CATEGORIES || item.Kategori === categoryFilter;
         return matchesSearch && matchesCategory;
       },
@@ -1930,7 +1946,7 @@ const TransaksiStok = ({
     const formData = new FormData(e.currentTarget);
     const idBarang = formData.get("idBarang");
     const item = master.find(
-      (m) => m.IDBarang.toString() === idBarang?.toString(),
+      (m) => safeString(m.IDBarang) === safeString(idBarang),
     );
     const jumlahRaw = formData.get("jumlah");
     const jumlah = Number(jumlahRaw);
@@ -2252,7 +2268,7 @@ const RiwayatTransaksi = ({
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredLogs = useMemo(() => {
-    let result = [...logs].reverse();
+    let result = [...logs].sort(transactionSort);
     if (filterStart) {
       const start = new Date(filterStart);
       start.setHours(0, 0, 0, 0);
@@ -2265,15 +2281,15 @@ const RiwayatTransaksi = ({
     }
     if (selectedCategory !== ALL_CATEGORIES) {
       result = result.filter((log) => {
-        const item = master.find((barang) => barang.IDBarang.toString() === log.IDBarang.toString());
+        const item = master.find((barang) => safeString(barang.IDBarang) === safeString(log.IDBarang));
         return item?.Kategori === selectedCategory;
       });
     }
     if (normalizedQuery) {
       result = result.filter(
         (log) =>
-          log.NamaBarang.toLowerCase().includes(normalizedQuery) ||
-          log.IDTransaksi.toString().toLowerCase().includes(normalizedQuery) ||
+          safeLower(log.NamaBarang).includes(normalizedQuery) ||
+          safeLower(log.IDTransaksi).includes(normalizedQuery) ||
           (log.Catatan || "").toLowerCase().includes(normalizedQuery),
       );
     }

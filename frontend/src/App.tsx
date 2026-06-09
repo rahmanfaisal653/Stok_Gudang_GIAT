@@ -1779,8 +1779,8 @@ const MasterStok = ({
                   name="kategori"
                   defaultValue={editingItem?.Kategori}
                   required
-                  pattern="[A-Za-zÀ-ÿ\s./-]+"
-                  title="Kategori hanya boleh berisi huruf dan spasi"
+                  pattern="[A-Za-z\s./\-]+"
+                  title="Kategori hanya boleh berisi huruf, spasi, titik, garis miring, atau strip"
                   className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
                   placeholder="ATK / Kertas"
                 />
@@ -1838,8 +1838,8 @@ const MasterStok = ({
                   name="satuan"
                   defaultValue={editingItem?.Satuan}
                   required
-                  pattern="[A-Za-zÀ-ÿ\s./-]+"
-                  title="Satuan hanya boleh berisi huruf dan spasi"
+                  pattern="[A-Za-z\s./\-]+"
+                  title="Satuan hanya boleh berisi huruf, spasi, titik, garis miring, atau strip"
                   className="w-full px-4 py-3 border border-slate-200 rounded-[12px] focus:border-[#E53935] focus:ring-1 focus:ring-[#E53935] outline-none transition-all text-[13px] font-medium text-slate-700 bg-white"
                   placeholder="Pcs/Rim"
                   />
